@@ -1,0 +1,36 @@
+{
+  "name": "@zwolf/job",
+  "version": "0.0.1",
+  "description": "Monitor successful and failed @zwolf/turbine jobs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stayradiated/zwolf-job.git"
+  },
+  "author": "George Czabania <george@czabania.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/stayradiated/zwolf-job/issues"
+  },
+  "homepage": "https://github.com/stayradiated/zwolf-job#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "pkg-build",
+    "test": "FIRESTORE_EMULATOR_HOST=0.0.0.0:8080 pkg-test --serial",
+    "lint": "pkg-lint",
+    "tidy": "pkg-tidy"
+  },
+  "devDependencies": {
+    "@stayradiated/pkg": "^4.1.0",
+    "@types/node": "^13.7.0",
+    "@types/sinon": "^7.5.1",
+    "sinon": "^8.1.1"
+  },
+  "dependencies": {
+    "@zwolf/firestore": "^1.0.2",
+    "@zwolf/turbine": "^3.7.0"
+  }
+}

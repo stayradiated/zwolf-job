@@ -1,0 +1,6 @@
+node_modules
+src
+dist/*.spec.ts
+dist/*.map
+dist/tsconfig.tsbuildinfo
+*.log
