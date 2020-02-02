@@ -1,6 +1,6 @@
 {
   "name": "@zwolf/job",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Monitor successful and failed @zwolf/turbine jobs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
