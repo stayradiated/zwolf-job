@@ -1,7 +1,7 @@
 {
   "name": "@zwolf/job",
   "version": "1.0.0",
-  "description": "Monitor successful and failed @zwolf/turbine jobs",
+  "description": "Monitor @zwolf/turbine jobs, and dispatch hooks on success",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "repository": {
@@ -27,7 +27,10 @@
     "@stayradiated/pkg": "^4.1.0",
     "@types/node": "^13.7.0",
     "@types/sinon": "^7.5.1",
-    "sinon": "^8.1.1"
+    "@types/uuid": "3.4.7",
+    "@zwolf/turbine-event": "3.7.0",
+    "sinon": "8.1.1",
+    "uuid": "3.4.0"
   },
   "dependencies": {
     "@zwolf/firestore": "^1.0.2",

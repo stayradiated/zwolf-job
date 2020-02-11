@@ -1,43 +1,158 @@
 import * as db from '@zwolf/firestore'
-import { HandlerFn } from '@zwolf/turbine'
-import { inspect } from 'util'
+import { HandlerFn, MessageTemplate } from '@zwolf/turbine'
 
-import { Job, JobCollection } from './firestore'
+export interface EventStatus {
+  id: string,
+  createdAt: Date,
+  updatedAt: Date,
 
-class AbortError extends Error {}
+  lastRequestAt: Date,
+  lastFailureAt: Date,
+  lastSuccessAt: Date,
+}
 
-const monitorJob = (handlerFn: HandlerFn): HandlerFn => {
+export interface EventHook {
+  eventStatusId: string,
+  createdAt: Date,
+  onState: string,
+  messageTemplate: MessageTemplate,
+}
+
+export interface EventHookMap {
+  onSuccess: EventHook[],
+}
+
+export type IDBuilder<Payload> = (payload: Payload) => string
+
+export interface EventStore<Payload> {
+  buildId: IDBuilder<Payload>,
+  get(payload: Payload): Promise<EventStatus>,
+}
+
+const EventStatusCollection = db.collection<Omit<EventStatus, 'id'>>(
+  'zwolf_event_status',
+)
+
+const EventHookCollection = db.collection<EventHook>('zwolf_event_hook')
+
+const getEventStatus = async (eventStatusId: string) => {
+  const status = await db.get(EventStatusCollection, eventStatusId)
+
+  const { updatedAt, createdAt, lastSuccessAt, lastFailureAt, lastRequestAt } =
+    status?.data || ({} as any)
+
+  return {
+    id: eventStatusId,
+    createdAt,
+    updatedAt,
+    lastSuccessAt,
+    lastFailureAt,
+    lastRequestAt,
+  }
+}
+
+const getEventHooks = async (eventStatusId: string): Promise<EventHookMap> =>  {
+  const hookList = await db.query(EventHookCollection, [
+    db.where('eventStatusId', '==', eventStatusId),
+  ])
+
+  const hooks = hookList.reduce((groups, hook) => {
+    switch (hook.data.onState) {
+      case 'SUCCESS':
+        groups.onSuccess.push(hook.data)
+        break
+    }
+    return groups
+  }, {
+    onSuccess: [],
+  })
+
+  return hooks
+}
+
+const dispatchOnNextState = (
+  eventStatusId: string,
+  onState: 'SUCCESS',
+  messageTemplate: MessageTemplate,
+) => {
+  return db.add(EventHookCollection, {
+    eventStatusId,
+    createdAt: db.value('serverDate'),
+    onState,
+    messageTemplate,
+  })
+}
+
+const dispatchOnNextSuccess = (
+  eventStatusId: string,
+  messageTemplate: MessageTemplate,
+) => {
+  return dispatchOnNextState(eventStatusId, 'SUCCESS', messageTemplate)
+}
+
+const jobMiddleware = <Payload>(store: EventStore<Payload>) => (
+  handler: HandlerFn,
+): HandlerFn => {
   return async (message, dispatch) => {
-    const job = await db.set(JobCollection, message.id, {
-      type: message.type,
-      payload: message.payload,
-      requestedAt: new Date(message.sentAt),
-      failedAt: null,
-      succeededAt: null,
-    })
+    const eventStatusId = store.buildId(message.payload)
 
-    try {
-      const result = await handlerFn(message, dispatch)
-
-      await db.update(job.ref, {
-        succeededAt: db.value('serverDate'),
+    const status = await db.get(EventStatusCollection, eventStatusId)
+    if (status == null) {
+      await db.set(EventStatusCollection, eventStatusId, {
+        createdAt: db.value('serverDate'),
+        updatedAt: db.value('serverDate'),
+        lastRequestAt: db.value('serverDate'),
+        lastSuccessAt: null,
+        lastFailureAt: null,
       })
+    } else {
+      await db.update(EventStatusCollection, eventStatusId, {
+        updatedAt: db.value('serverDate'),
+        lastRequestAt: db.value('serverDate'),
+      })
+    }
+
+    const hooks = await getEventHooks(eventStatusId)
+    try {
+      const result = await handler(message, dispatch)
+      await db.update(EventStatusCollection, eventStatusId, {
+        lastSuccessAt: db.value('serverDate'),
+        updatedAt: db.value('serverDate'),
+      })
+
+      for (const hook of hooks.onSuccess) {
+        await dispatch(hook.messageTemplate)
+      }
 
       return result
     } catch (error) {
-      await db.update(job.ref, {
-        failedAt: db.value('serverDate'),
+      await db.update(EventStatusCollection, eventStatusId, {
+        updatedAt: db.value('serverDate'),
+        lastFailureAt: db.value('serverDate'),
       })
-
-      if (error instanceof AbortError) {
-        console.error(error)
-        // format error and remove stack trace
-        return inspect(error).match(/^.*/)[0]
-      }
 
       throw error
     }
   }
 }
 
-export { monitorJob, AbortError, Job, JobCollection }
+const createEventStore = <Payload>(
+  buildId: IDBuilder<Payload>,
+): EventStore<Payload> => {
+  return {
+    buildId,
+    get: (payload: Payload) => {
+      const eventStatusId = buildId(payload)
+      return getEventStatus(eventStatusId)
+    },
+  }
+}
+
+export {
+  EventStatusCollection,
+  EventHookCollection,
+  getEventStatus,
+  dispatchOnNextSuccess,
+  jobMiddleware,
+  createEventStore,
+}
