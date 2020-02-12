@@ -126,8 +126,8 @@ const updateEventLastSuccess = async (eventStatusId: string) => {
 }
 
 const jobMiddleware = <Payload>(store: EventStore<Payload>) => (
-  handler: HandlerFn,
-): HandlerFn => {
+  handler: HandlerFn<Payload>,
+): HandlerFn<Payload> => {
   return async (message, dispatch) => {
     const eventStatusId = store.buildId(message.payload)
 
