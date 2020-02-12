@@ -51,21 +51,24 @@ const getEventStatus = async (eventStatusId: string) => {
   }
 }
 
-const getEventHooks = async (eventStatusId: string): Promise<EventHookMap> =>  {
+const getEventHooks = async (eventStatusId: string): Promise<EventHookMap> => {
   const hookList = await db.query(EventHookCollection, [
     db.where('eventStatusId', '==', eventStatusId),
   ])
 
-  const hooks = hookList.reduce((groups, hook) => {
-    switch (hook.data.onState) {
-      case 'SUCCESS':
-        groups.onSuccess.push(hook.data)
-        break
-    }
-    return groups
-  }, {
-    onSuccess: [],
-  })
+  const hooks = hookList.reduce(
+    (groups, hook) => {
+      switch (hook.data.onState) {
+        case 'SUCCESS':
+          groups.onSuccess.push(hook.data)
+          break
+      }
+      return groups
+    },
+    {
+      onSuccess: [],
+    },
+  )
 
   return hooks
 }
@@ -90,35 +93,50 @@ const dispatchOnNextSuccess = (
   return dispatchOnNextState(eventStatusId, 'SUCCESS', messageTemplate)
 }
 
+const createOrUpdateEventLastRequest = async (eventStatusId: string) => {
+  const status = await db.get(EventStatusCollection, eventStatusId)
+  if (status == null) {
+    await db.set(EventStatusCollection, eventStatusId, {
+      createdAt: db.value('serverDate'),
+      updatedAt: db.value('serverDate'),
+      lastRequestAt: db.value('serverDate'),
+      lastSuccessAt: null,
+      lastFailureAt: null,
+    })
+  } else {
+    await db.update(EventStatusCollection, eventStatusId, {
+      updatedAt: db.value('serverDate'),
+      lastRequestAt: db.value('serverDate'),
+    })
+  }
+}
+
+const updateEventLastFailure = async (eventStatusId: string) => {
+  await db.update(EventStatusCollection, eventStatusId, {
+    updatedAt: db.value('serverDate'),
+    lastFailureAt: db.value('serverDate'),
+  })
+}
+
+const updateEventLastSuccess = async (eventStatusId: string) => {
+  await db.update(EventStatusCollection, eventStatusId, {
+    lastSuccessAt: db.value('serverDate'),
+    updatedAt: db.value('serverDate'),
+  })
+}
+
 const jobMiddleware = <Payload>(store: EventStore<Payload>) => (
   handler: HandlerFn,
 ): HandlerFn => {
   return async (message, dispatch) => {
     const eventStatusId = store.buildId(message.payload)
 
-    const status = await db.get(EventStatusCollection, eventStatusId)
-    if (status == null) {
-      await db.set(EventStatusCollection, eventStatusId, {
-        createdAt: db.value('serverDate'),
-        updatedAt: db.value('serverDate'),
-        lastRequestAt: db.value('serverDate'),
-        lastSuccessAt: null,
-        lastFailureAt: null,
-      })
-    } else {
-      await db.update(EventStatusCollection, eventStatusId, {
-        updatedAt: db.value('serverDate'),
-        lastRequestAt: db.value('serverDate'),
-      })
-    }
+    await createOrUpdateEventLastRequest(eventStatusId)
 
     const hooks = await getEventHooks(eventStatusId)
     try {
       const result = await handler(message, dispatch)
-      await db.update(EventStatusCollection, eventStatusId, {
-        lastSuccessAt: db.value('serverDate'),
-        updatedAt: db.value('serverDate'),
-      })
+      await updateEventLastSuccess(eventStatusId)
 
       for (const hook of hooks.onSuccess) {
         await dispatch(hook.messageTemplate)
@@ -126,11 +144,7 @@ const jobMiddleware = <Payload>(store: EventStore<Payload>) => (
 
       return result
     } catch (error) {
-      await db.update(EventStatusCollection, eventStatusId, {
-        updatedAt: db.value('serverDate'),
-        lastFailureAt: db.value('serverDate'),
-      })
-
+      await updateEventLastFailure(eventStatusId)
       throw error
     }
   }
@@ -155,4 +169,7 @@ export {
   dispatchOnNextSuccess,
   jobMiddleware,
   createEventStore,
+  createOrUpdateEventLastRequest,
+  updateEventLastFailure,
+  updateEventLastSuccess,
 }
