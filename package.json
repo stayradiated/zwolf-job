@@ -1,6 +1,6 @@
 {
   "name": "@zwolf/job",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Monitor @zwolf/turbine jobs, and dispatch hooks on success",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
